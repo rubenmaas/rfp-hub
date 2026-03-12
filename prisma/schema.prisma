@@ -1,0 +1,143 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum RfpType {
+  RFP
+  GRANT
+  BOUNTY
+  RETROACTIVE
+}
+
+enum RfpStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  AWARDED
+  CANCELLED
+}
+
+enum VerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  DISPUTED
+}
+
+model Rfp {
+  id                 String             @id @default(cuid())
+  schemaVersion      String             @default("1.0.0")
+  type               RfpType            @default(RFP)
+  name               String
+  description        String
+  status             RfpStatus          @default(OPEN)
+  deadline           DateTime?
+  budgetMin          Decimal?
+  budgetMax          Decimal?
+  budgetCurrency     String             @default("USD")
+  durationMinDays    Int?
+  durationMaxDays    Int?
+  applicationUrl     String
+  sourceUrl          String             @unique
+  tags               String[]
+  ecosystems         String[]
+
+  // Provenance
+  submittedBy        String             @default("system")
+  verificationStatus VerificationStatus @default(UNVERIFIED)
+  lastCheckedAt      DateTime?
+
+  // Relations
+  programId          String
+  program            Program            @relation(fields: [programId], references: [id])
+  requirements       Requirement[]
+  evaluationCriteria EvaluationCriterion[]
+  deliverables       Deliverable[]
+  changeHistory      ChangeRecord[]
+
+  duplicateOfId      String?
+  duplicateOf        Rfp?               @relation("Duplicates", fields: [duplicateOfId], references: [id])
+  duplicates         Rfp[]              @relation("Duplicates")
+
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  @@index([status])
+  @@index([deadline])
+  @@index([programId])
+  @@index([verificationStatus])
+}
+
+model Program {
+  id           String    @id @default(cuid())
+  name         String
+  organization String
+  website      String
+  ecosystems   String[]
+  rfps         Rfp[]
+  publisherId  String?
+  publisher    Publisher? @relation(fields: [publisherId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Publisher {
+  id                 String    @id @default(cuid())
+  name               String
+  domain             String    @unique
+  verified           Boolean   @default(false)
+  verifiedAt         DateTime?
+  verificationMethod String?
+  programs           Program[]
+  createdAt          DateTime  @default(now())
+}
+
+model Requirement {
+  id          String @id @default(cuid())
+  rfpId       String
+  rfp         Rfp    @relation(fields: [rfpId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  priority    String @default("required") // required, preferred, optional
+
+  @@index([rfpId])
+}
+
+model EvaluationCriterion {
+  id          String @id @default(cuid())
+  rfpId       String
+  rfp         Rfp    @relation(fields: [rfpId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  weight      Int?   // percentage weight, e.g. 30
+
+  @@index([rfpId])
+}
+
+model Deliverable {
+  id          String @id @default(cuid())
+  rfpId       String
+  rfp         Rfp    @relation(fields: [rfpId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  milestone   String? // e.g. "M1", "M2"
+
+  @@index([rfpId])
+}
+
+model ChangeRecord {
+  id        String   @id @default(cuid())
+  rfpId     String
+  rfp       Rfp      @relation(fields: [rfpId], references: [id], onDelete: Cascade)
+  field     String
+  oldValue  String?
+  newValue  String?
+  changedBy String   @default("system")
+  createdAt DateTime @default(now())
+
+  @@index([rfpId])
+}
